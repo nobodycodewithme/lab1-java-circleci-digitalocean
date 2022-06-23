@@ -16,7 +16,7 @@ jobs:
           docker_layer_caching: true
       - run:
           name: create-maven-dependecies-folder
-          command: if [ -d /home/circleci/projects/.m2/repository ]; then echo "/home/circleci/projects/.m2/repository is exists"; else mkdir -p /home/circleci/projects/.m2/repository; fi
+          command: if [ -d /home/circleci/projects/.m2/repository ]; then echo /home/circleci/projects/.m2/repository is exists; else mkdir -p /home/circleci/projects/.m2/repository; fi
       - restore_cache:
           key: maven-cache-v1-{{ .Branch }}-{{ checksum "pom.xml" }}
       - run:
@@ -35,7 +35,7 @@ jobs:
             sed -i "s/\r$//" mvnw
             ./mvnw --version
             ./mvnw --settings maven-settings.xml package -D.maven.test.skip
-            if [ -d /home/circleci/projects/caches ]; then echo "/home/circleci/projects/caches is exists"; else mkdir -p /home/circleci/projects/caches; fi
+            if [ -d /home/circleci/projects/caches ]; then echo /home/circleci/projects/caches is exists; else mkdir -p /home/circleci/projects/caches; fi
       - restore_cache:
           key: docker-cache-v1-{{ .Branch }}-{{ checksum "Dockerfile" }}
       - run:
@@ -77,11 +77,13 @@ jobs:
                 ports:
                   - "8080:8080"
             EOF
+            
             cat \<<EOF > deploy.sh
             docker-compose stop
             docker-compose rm -f
             docker-compose pull
             docker-compose up -d
+            docker image prune -f
             EOF
       - add_ssh_keys:
           fingerprints:
