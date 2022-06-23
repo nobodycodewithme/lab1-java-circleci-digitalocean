@@ -12,21 +12,54 @@ jobs:
       - image: cimg/openjdk:11.0.13
     steps:
       - checkout
-      - setup_remote_docker
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: create-maven-dependecies-folder
+          command: if [ -d /home/circleci/projects/.m2/repository ]; then echo "/home/circleci/projects/.m2/repository is exists"; else mkdir -p /home/circleci/projects/.m2/repository; fi
+      - restore_cache:
+          key: maven-cache-v1-{{ .Branch }}-{{ checksum "pom.xml" }}
       - run:
           name: maven package
           command: |
+            cat \<<EOF > maven-settings.xml
+            <settings xmlns='http://maven.apache.org/SETTINGS/1.0.0'>
+              <localRepository>/home/circleci/projects/.m2/repository</localRepository>
+              <interactiveMode>true</interactiveMode>
+              <usePluginRegistry>false</usePluginRegistry>
+              <offline>false</offline>
+            </settings>
+            EOF
+            
             chmod +x mvnw
             sed -i "s/\r$//" mvnw
             ./mvnw --version
-            ./mvnw package
+            ./mvnw --settings maven-settings.xml package -D.maven.test.skip
+            if [ -d /home/circleci/projects/caches ]; then echo "/home/circleci/projects/caches is exists"; else mkdir -p /home/circleci/projects/caches; fi
+      - restore_cache:
+          key: docker-cache-v1-{{ .Branch }}-{{ checksum "Dockerfile" }}
+      - run:
+          name: load-docker-image-cache
+          command: |
+            set +o pipefail
+            docker load -i /home/circleci/projects/caches/openjdk11.tar | true
+            docker images
       - run:
           name: build-push-docker-image
           command: |
             echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
             docker build -t $DOCKER_USERNAME/$DOCKER_IMAGE:$DOCKER_TAG .
             docker images
+            docker save -o /home/circleci/projects/caches/openjdk11.tar adoptopenjdk/openjdk11
             docker push $DOCKER_USERNAME/$DOCKER_IMAGE:$DOCKER_TAG
+      - save_cache:
+          key: docker-cache-v1-{{ .Branch }}-{{ checksum "Dockerfile" }}
+          paths:
+            - "/home/circleci/projects/caches/openjdk11.tar"
+      - save_cache:
+          key: maven-cache-v1-{{ .Branch }}-{{ checksum "pom.xml" }}
+          paths:
+            - "/home/circleci/projects/.m2/repository"
   deploy:
     environment:
       DOCKER_IMAGE: lab1-java-circleci-digitalocean
@@ -39,7 +72,7 @@ jobs:
             cat \<<EOF > docker-compose.yaml 
             version: '3.8'
             services:
-              thuetro:
+              lab1-java-circleci-digitalocean:
                 image: $DOCKER_USERNAME/$DOCKER_IMAGE:$DOCKER_TAG
                 ports:
                   - "8080:8080"
